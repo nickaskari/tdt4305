@@ -16,6 +16,7 @@ parameters_dictionary = dict()  # dictionary that holds the input parameters, ke
 document_list = dict()  # dictionary of the input documents, key = document id, value = the document
 
 
+
 # DO NOT CHANGE THIS METHOD
 # Reads the parameters of the project from the parameter file 'file'
 # and stores them to the parameter dictionary 'parameters_dictionary'
@@ -223,5 +224,5 @@ if __name__ == '__main__':
         
         print("\n")
 
-    
+
     
