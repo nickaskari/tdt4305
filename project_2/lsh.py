@@ -8,6 +8,13 @@ import time  # for timing
 import numpy as np # for creating matrices or arrays
 import random # for randomly generating a and b for hash functions
 from itertools import combinations # for creating candidate pairs in lsh
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import random
+
+
 
 # Global parameters
 parameter_file = 'default_parameters.ini'  # the main parameters file
@@ -20,6 +27,7 @@ document_list = dict()  # dictionary of the input documents, key = document id, 
 # DO NOT CHANGE THIS METHOD
 # Reads the parameters of the project from the parameter file 'file'
 # and stores them to the parameter dictionary 'parameters_dictionary'
+# accessed as “parameters_dictionary[‘parameter_name’]”
 def read_parameters():
     config = configparser.ConfigParser()
     config.read(parameter_file)
@@ -33,7 +41,9 @@ def read_parameters():
                 parameters_dictionary[key] = float(config[section][key])
             else:
                 parameters_dictionary[key] = int(config[section][key])
+    
 
+read_parameters() #remove later
 
 # DO NOT CHANGE THIS METHOD
 # Reads all the documents in the 'data_path' and stores them in the dictionary 'document_list'
@@ -45,6 +55,10 @@ def read_data(data_path):
             file_id = int(file_path.stem)
             document_list[file_id] = doc
 
+
+data_folder = data_main_directory / parameters_dictionary['data']
+read_data(data_folder)
+document_list = {k: document_list[k] for k in sorted(document_list)}
 
 # DO NOT CHANGE THIS METHOD
 # Calculates the Jaccard Similarity between two documents represented as sets
@@ -92,37 +106,105 @@ def naive():
 # METHOD FOR TASK 1
 # Creates the k-Shingles of each document and returns a list of them
 def k_shingles():
-    docs_k_shingles = []  # holds the k-shingles of each document
+    docs_k_shingles = []  
+    k = parameters_dictionary['k']
+    non_word_pattern = re.compile(r'[^\w\s]') # Remove punctuation, special characters, and numbers
 
-    # implement your code here
+    stop_words = set(stopwords.words('english'))
+
+    for doc_id, document in document_list.items():
+        
+        cleaned_doc = re.sub(non_word_pattern, '', document)
+        # Tokenize and filter out stop words using Natural Language Toolkit (NLTK)
+        words_filtered = [word for word in word_tokenize(
+            cleaned_doc) if word.lower() not in stop_words]
+        
+        k_shingles_set = set([' '.join(words_filtered[i:i+k])
+                             for i in range(len(words_filtered) - k + 1)])
+        docs_k_shingles.append(k_shingles_set)
+    
+    #print(docs_k_shingles[0])
 
     return docs_k_shingles
 
+#k_shingles_docs = k_shingles()      
 
 # METHOD FOR TASK 2
 # Creates a signatures set of the documents from the k-shingles list
+# Create INPUT MATRIX, name is misleading
 def signature_set(k_shingles):
-    docs_sig_sets = []
+    
+    all_unique_shingles = set().union(*k_shingles) # can add *k_shingles instead
+    all_unique_shingles_list = list(all_unique_shingles)
 
-    # implement your code here
+    
+    shingle_to_index = {shingle: idx for idx, shingle in enumerate(all_unique_shingles_list)}
 
-    return docs_sig_sets
+    num_docs = len(k_shingles)
+    num_shingles = len(all_unique_shingles)
+    input_matrix = np.zeros((num_shingles, num_docs), dtype=int)
 
+    for doc_idx, shingles_set in enumerate(k_shingles):
+        for shingle in shingles_set:
+            shingle_idx = shingle_to_index[shingle]
+            input_matrix[shingle_idx, doc_idx] = 1
+
+    return input_matrix
+
+#sigM, x = signature_set(k_shingles_docs)
+#print(sigM)
 
 # METHOD FOR TASK 3
 
+# Helper to get next prime number
+def next_prime(N):
+    def is_prime(n):
+        if n <= 2:
+            return n == 2
+        if n % 2 == 0:
+            return False
+        p = 3
+        while p * p <= n:
+            if n % p == 0:
+                return False
+            p += 2
+        return True
+
+    prime = N + 1
+    while not is_prime(prime):
+        prime += 1
+    return prime
+
 # A function for generating hash functions
 def generate_hash_functions(num_perm, N):
+    p = next_prime(N)
     hash_funcs = []
-    
-    # implement your code here
+
+    for i in range(num_perm):
+        a = random.randint(1, p - 1)
+        b = random.randint(0, p - 1)
+        hash_list = [((a * x + b) % (p - 1) + 1) for x in range(1, N + 1)]
+        hash_funcs.append(hash_list)
 
     return hash_funcs
+
 # Creates the minHash signatures after generating hash functions
+# docs_signature_sets is the input matrix
+
+# i think the logic is right, but implementation is too slow
 def minHash(docs_signature_sets, hash_fn):
     min_hash_signatures = []
 
-    # implement your code here
+    num_docs = docs_signature_sets.shape[1] # columns, number of txt files. Rows are shingles
+    num_permutation = len(hash_fn) 
+    min_hash_signatures = np.full((num_permutation, num_docs), np.inf)
+
+    for perm_idx, hash_list in enumerate(hash_fn):
+        for doc_idx in range(num_docs):
+            for shingle_idx in range(docs_signature_sets.shape[0]):
+                if docs_signature_sets[shingle_idx, doc_idx] == 1:  
+                    min_hash_signatures[perm_idx, doc_idx] = min(
+                        min_hash_signatures[perm_idx, doc_idx], hash_list[shingle_idx])
 
     return min_hash_signatures
 
@@ -155,7 +237,7 @@ if __name__ == '__main__':
     read_parameters()
 
     # Reading the data
-    print("Data reading...")
+    print("\nData reading...")
     data_folder = data_main_directory / parameters_dictionary['data']
     t0 = time.time()
     read_data(data_folder)
@@ -172,6 +254,7 @@ if __name__ == '__main__':
         t3 = time.time()
         print("Calculating the similarities of", len(naive_similarity_matrix),
               "combinations of documents took", t3 - t2, "sec\n")
+    
 
     # k-Shingles
     print("Starting to create all k-shingles of the documents...")
@@ -225,4 +308,3 @@ if __name__ == '__main__':
         print("\n")
 
 
-    
