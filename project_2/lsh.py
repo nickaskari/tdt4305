@@ -9,11 +9,16 @@ import numpy as np # for creating matrices or arrays
 import random # for randomly generating a and b for hash functions
 from itertools import combinations # for creating candidate pairs in lsh
 import re
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
+#import nltk
+#from nltk.corpus import stopwords
+#from nltk.tokenize import word_tokenize
 import random
 
+'''
+NOTEs:
+- Can change data from BBC to test for shorter runtimes and easier visualization
+- 
+'''
 
 
 # Global parameters
@@ -43,7 +48,7 @@ def read_parameters():
                 parameters_dictionary[key] = int(config[section][key])
     
 
-read_parameters() #remove later
+#read_parameters() #remove later
 
 # DO NOT CHANGE THIS METHOD
 # Reads all the documents in the 'data_path' and stores them in the dictionary 'document_list'
@@ -56,9 +61,9 @@ def read_data(data_path):
             document_list[file_id] = doc
 
 
-data_folder = data_main_directory / parameters_dictionary['data']
-read_data(data_folder)
-document_list = {k: document_list[k] for k in sorted(document_list)}
+#data_folder = data_main_directory / parameters_dictionary['data']
+#read_data(data_folder)
+#document_list = {k: document_list[k] for k in sorted(document_list)}
 
 # DO NOT CHANGE THIS METHOD
 # Calculates the Jaccard Similarity between two documents represented as sets
@@ -105,6 +110,8 @@ def naive():
 
 # METHOD FOR TASK 1
 # Creates the k-Shingles of each document and returns a list of them
+'''
+This removes stop words, but adds complexity
 def k_shingles():
     docs_k_shingles = []  
     k = parameters_dictionary['k']
@@ -123,7 +130,22 @@ def k_shingles():
                              for i in range(len(words_filtered) - k + 1)])
         docs_k_shingles.append(k_shingles_set)
     
-    #print(docs_k_shingles[0])
+    print(docs_k_shingles)
+
+    return docs_k_shingles
+'''
+
+def k_shingles():
+    docs_k_shingles = []
+    k = parameters_dictionary['k']
+    non_word_pattern = re.compile(r'[^\w\s]')
+
+    for doc_id, document in document_list.items():
+        cleaned_doc = re.sub(non_word_pattern, '', document)
+        words = cleaned_doc.split()
+        k_shingles_set = set([' '.join(words[i:i+k])
+                             for i in range(len(words) - k + 1)])
+        docs_k_shingles.append(k_shingles_set)
 
     return docs_k_shingles
 
@@ -133,12 +155,12 @@ def k_shingles():
 # Creates a signatures set of the documents from the k-shingles list
 # Create INPUT MATRIX, name is misleading
 def signature_set(k_shingles):
-    
-    all_unique_shingles = set().union(*k_shingles) # can add *k_shingles instead
+
+    all_unique_shingles = set().union(*k_shingles)  # can add *k_shingles instead
     all_unique_shingles_list = list(all_unique_shingles)
 
-    
-    shingle_to_index = {shingle: idx for idx, shingle in enumerate(all_unique_shingles_list)}
+    shingle_to_index = {shingle: idx for idx,
+                        shingle in enumerate(all_unique_shingles_list)}
 
     num_docs = len(k_shingles)
     num_shingles = len(all_unique_shingles)
@@ -150,9 +172,6 @@ def signature_set(k_shingles):
             input_matrix[shingle_idx, doc_idx] = 1
 
     return input_matrix
-
-#sigM, x = signature_set(k_shingles_docs)
-#print(sigM)
 
 # METHOD FOR TASK 3
 
@@ -177,34 +196,33 @@ def next_prime(N):
 
 # A function for generating hash functions
 def generate_hash_functions(num_perm, N):
-    p = next_prime(N)
     hash_funcs = []
-
-    for i in range(num_perm):
-        a = random.randint(1, p - 1)
-        b = random.randint(0, p - 1)
-        hash_list = [((a * x + b) % (p - 1) + 1) for x in range(1, N + 1)]
-        hash_funcs.append(hash_list)
-
+    for i in range(1, num_perm + 1):
+        a = random.randint(1, N)
+        b = random.randint(0, N)
+        p = next_prime(N)
+        hash_func = (lambda x, a=a, b=b, p=p: ((a * x + b) %
+                     (p)) + 1, {'a': a, 'b': b, 'p': p})
+        hash_funcs.append(hash_func)
     return hash_funcs
 
 # Creates the minHash signatures after generating hash functions
-# docs_signature_sets is the input matrix
-
-# i think the logic is right, but implementation is too slow
 def minHash(docs_signature_sets, hash_fn):
-    min_hash_signatures = []
 
-    num_docs = docs_signature_sets.shape[1] # columns, number of txt files. Rows are shingles
-    num_permutation = len(hash_fn) 
+    input_matrix = docs_signature_sets  # simplicity
+    
+    num_shingles = input_matrix.shape[0]  # num rows
+    num_docs = input_matrix.shape[1]  # num columns
+    num_permutation = len(hash_fn)
     min_hash_signatures = np.full((num_permutation, num_docs), np.inf)
 
-    for perm_idx, hash_list in enumerate(hash_fn):
-        for doc_idx in range(num_docs):
-            for shingle_idx in range(docs_signature_sets.shape[0]):
-                if docs_signature_sets[shingle_idx, doc_idx] == 1:  
-                    min_hash_signatures[perm_idx, doc_idx] = min(
-                        min_hash_signatures[perm_idx, doc_idx], hash_list[shingle_idx])
+    for permutation, (hash_func, params) in enumerate(hash_fn):
+        for doc in range(num_docs):  # for each doc, column
+            for shingle in range(num_shingles):  # for each shingle
+                if input_matrix[shingle, doc] == 1:
+                    shingle_hash = hash_func(shingle)
+                    min_hash_signatures[permutation, doc] = min(
+                        min_hash_signatures[permutation, doc], shingle_hash)
 
     return min_hash_signatures
 
@@ -263,14 +281,14 @@ if __name__ == '__main__':
     t5 = time.time()
     print("Representing documents with k-shingles took", t5 - t4, "sec\n")
 
-    # signatures sets
+    # signatures sets (input matrix)
     print("Starting to create the signatures of the documents...")
     t6 = time.time()
     signature_sets = signature_set(all_docs_k_shingles)
     t7 = time.time()
     print("Signatures representation took", t7 - t6, "sec\n")
 
-    # Permutations
+    # Permutations (real signature matrix)
     print("Starting to simulate the MinHash Signature Matrix...")
     t8 = time.time()
     hash_fn = generate_hash_functions(parameters_dictionary['permutations'], len(signature_sets))
