@@ -208,19 +208,19 @@ def generate_hash_functions(num_perm, N):
 
 # Creates the minHash signatures after generating hash functions
 def minHash(docs_signature_sets, hash_fn):
-
-    input_matrix = docs_signature_sets  # simplicity
     
+    input_matrix = docs_signature_sets  # for simplicity
+
     num_shingles = input_matrix.shape[0]  # num rows
     num_docs = input_matrix.shape[1]  # num columns
     num_permutation = len(hash_fn)
     min_hash_signatures = np.full((num_permutation, num_docs), np.inf)
 
-    for permutation, (hash_func, params) in enumerate(hash_fn):
+    for shingle in range(num_shingles):  # for each shingle, row
         for doc in range(num_docs):  # for each doc, column
-            for shingle in range(num_shingles):  # for each shingle
-                if input_matrix[shingle, doc] == 1:
-                    shingle_hash = hash_func(shingle)
+            if input_matrix[shingle, doc] == 1: # ensures that hash functions are applied only to shingles that actually appear in the document
+                for permutation, (hash_func, params) in enumerate(hash_fn):
+                    shingle_hash = hash_func(shingle, **params)
                     min_hash_signatures[permutation, doc] = min(
                         min_hash_signatures[permutation, doc], shingle_hash)
 
@@ -229,10 +229,29 @@ def minHash(docs_signature_sets, hash_fn):
 
 # METHOD FOR TASK 4
 # Hashes the MinHash Signature Matrix into buckets and find candidate similar documents
-def lsh(m_matrix):
-    candidates = []  # list of candidate sets of documents for checking similarity
+def lsh(min_hash_signatures):
 
-    # implement your code here
+    b = parameters_dictionary['b']
+    num_rows, num_docs = min_hash_signatures.shape
+    rows_per_band = num_rows // b
+    candidates = set()
+
+    for band in range(b):
+        start_index = band * rows_per_band
+        end_index = start_index + rows_per_band
+        buckets = {}
+
+        for doc in range(num_docs):
+            band_slice = tuple(min_hash_signatures[start_index:end_index, doc])
+
+            band_hash = hash(band_slice)
+
+            if band_hash not in buckets:
+                buckets[band_hash] = [doc]
+            else:
+                for candidate_doc in buckets[band_hash]:
+                    candidates.add((candidate_doc, doc))
+                buckets[band_hash].append(doc)
 
     return candidates
 
@@ -240,9 +259,20 @@ def lsh(m_matrix):
 # METHOD FOR TASK 5
 # Calculates the similarities of the candidate documents
 def candidates_similarities(candidate_docs, min_hash_matrix):
-    similarity_dict = []
+    similarity_dict = {}
+    t = parameters_dictionary['t']
 
-    # implement your code here
+    for candidate_pair in candidate_docs:
+
+        doc1, doc2 = list(candidate_pair)
+
+        agreement = np.sum(
+            min_hash_matrix[:, doc1] == min_hash_matrix[:, doc2])
+
+        similarity = agreement / min_hash_matrix.shape[0]
+
+        if similarity > t:
+            similarity_dict[candidate_pair] = similarity
 
     return similarity_dict
 
@@ -317,12 +347,19 @@ if __name__ == '__main__':
 
     print("LSH process took in total", t14 - t15, "sec")
 
-    
+    '''
     print("The pairs of documents are:\n")
     for p in true_pairs:
-        print(f"LSH algorith reveals that the BBC article {list(p.keys())[0][0]+1}.txt and {list(p.keys())[0][1]+1}.txt \
+        print(f"LSH algorithm reveals that the BBC article {list(p.keys())[0][0]+1}.txt and {list(p.keys())[0][1]+1}.txt \
               are {round(list(p.values())[0],2)*100}% similar")
-        
+
         print("\n")
-
-
+    '''
+    
+    # edited this slightly to make it work with our lsh function
+    print("The pairs of documents are:\n")
+    for pair, similarity in true_pairs.items():
+        doc1, doc2 = pair  # Assuming pair is a tuple (doc1, doc2)
+        # Correctly formatted print statement
+        print(f"LSH algorithm reveals that the BBC article {doc1+1}.txt and {doc2+1}.txt "
+            f"are {round(similarity*100, 2)}% similar.\n")
