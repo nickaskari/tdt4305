@@ -57,10 +57,6 @@ def read_data(data_path):
             document_list[file_id] = doc
 
 
-#data_folder = data_main_directory / parameters_dictionary['data']
-#read_data(data_folder)
-#document_list = {k: document_list[k] for k in sorted(document_list)}
-
 # DO NOT CHANGE THIS METHOD
 # Calculates the Jaccard Similarity between two documents represented as sets
 def jaccard(doc1, doc2):
