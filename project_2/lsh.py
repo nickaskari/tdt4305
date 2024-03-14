@@ -326,7 +326,7 @@ if __name__ == '__main__':
     if parameters_dictionary['naive']:
         print("Naive similarity calculation took", t3 - t2, "sec")
 
-    print("LSH process took in total", t14 - t15, "sec")
+    print("LSH process took in total", t15 - t14, "sec") # edited to get right order
 
     '''
     print("The pairs of documents are:\n")
@@ -341,6 +341,6 @@ if __name__ == '__main__':
     print("The pairs of documents are:\n")
     for pair, similarity in true_pairs.items():
         doc1, doc2 = pair  # Assuming pair is a tuple (doc1, doc2)
-        # Correctly formatted print statement
+        # multiply by 100 to get percentage
         print(f"LSH algorithm reveals that the BBC article {doc1+1}.txt and {doc2+1}.txt "
             f"are {round(similarity*100, 2)}% similar.\n")
