@@ -9,6 +9,14 @@ import numpy as np # for creating matrices or arrays
 import random # for randomly generating a and b for hash functions
 from itertools import combinations # for creating candidate pairs in lsh
 
+
+'''
+NOTEs:
+- Can change data from BBC to test for shorter runtimes and easier visualization
+- 
+'''
+
+
 # Global parameters
 parameter_file = 'default_parameters.ini'  # the main parameters file
 data_main_directory = Path('data')  # the main path were all the data directories are
@@ -16,9 +24,11 @@ parameters_dictionary = dict()  # dictionary that holds the input parameters, ke
 document_list = dict()  # dictionary of the input documents, key = document id, value = the document
 
 
+
 # DO NOT CHANGE THIS METHOD
 # Reads the parameters of the project from the parameter file 'file'
 # and stores them to the parameter dictionary 'parameters_dictionary'
+# accessed as “parameters_dictionary[‘parameter_name’]”
 def read_parameters():
     config = configparser.ConfigParser()
     config.read(parameter_file)
@@ -32,7 +42,9 @@ def read_parameters():
                 parameters_dictionary[key] = float(config[section][key])
             else:
                 parameters_dictionary[key] = int(config[section][key])
+    
 
+#read_parameters() #remove later
 
 # DO NOT CHANGE THIS METHOD
 # Reads all the documents in the 'data_path' and stores them in the dictionary 'document_list'
@@ -90,48 +102,134 @@ def naive():
 
 # METHOD FOR TASK 1
 # Creates the k-Shingles of each document and returns a list of them
-def k_shingles():
-    docs_k_shingles = []  # holds the k-shingles of each document
+# Previousy defined a function that removed stop words, but this was not required, and so this doesnt
 
-    # implement your code here
+def k_shingles():
+    docs_k_shingles = []
+    k = parameters_dictionary['k']
+
+    for _, document in document_list.items():
+        
+        cleaned_doc = ''.join(c for c in document if c.isalnum() or c.isspace())
+        words = cleaned_doc.split()
+        k_shingles_set = set(' '.join(words[i:i+k]) 
+                             for i in range(len(words) - k + 1))
+        docs_k_shingles.append(k_shingles_set)
 
     return docs_k_shingles
 
 
+
 # METHOD FOR TASK 2
 # Creates a signatures set of the documents from the k-shingles list
+# Creates INPUT MATRIX, name is misleading
 def signature_set(k_shingles):
-    docs_sig_sets = []
 
-    # implement your code here
+    all_unique_shingles = set().union(*k_shingles)  # can add *k_shingles instead
+    all_unique_shingles_list = list(all_unique_shingles)
 
-    return docs_sig_sets
+    shingle_to_index = {shingle: idx for idx,
+                        shingle in enumerate(all_unique_shingles_list)}
 
+    num_docs = len(k_shingles)
+    num_shingles = len(all_unique_shingles)
+    input_matrix = np.zeros((num_shingles, num_docs), dtype=int)
+
+    for doc_idx, shingles_set in enumerate(k_shingles):
+        for shingle in shingles_set:
+            shingle_idx = shingle_to_index[shingle]
+            input_matrix[shingle_idx, doc_idx] = 1
+
+    return input_matrix
 
 # METHOD FOR TASK 3
 
+# Helper to get next prime number
+def next_prime(N):
+    def is_prime(n):
+        if n <= 2:
+            return n == 2
+        if n % 2 == 0:
+            return False
+        p = 3
+        while p * p <= n:
+            if n % p == 0:
+                return False
+            p += 2
+        return True
+
+    prime = N + 1
+    while not is_prime(prime):
+        prime += 1
+    return prime
+
 # A function for generating hash functions
+# Returns a dict, where key is permutations and params are a, b, p
 def generate_hash_functions(num_perm, N):
     hash_funcs = []
-    
-    # implement your code here
-
+    for i in range(1, num_perm + 1):
+        a = random.randint(1, N)
+        b = random.randint(0, N)
+        p = next_prime(N)
+        hash_func = (lambda x, a=a, b=b, p=p: ((a * x + b) %
+                     (p)) + 1, {'a': a, 'b': b, 'p': p})
+        hash_funcs.append(hash_func)
     return hash_funcs
-# Creates the minHash signatures after generating hash functions
-def minHash(docs_signature_sets, hash_fn):
-    min_hash_signatures = []
 
-    # implement your code here
+
+# Creates the minHash signatures after generating hash functions
+'''
+less intuitive than pseudocode, but more efficient:
+If the shingle is present in the document, iterate through each hash. Compute the hash value, and update it 
+to the min the current and the previous.
+'''
+def minHash(docs_signature_sets, hash_fn):
+    
+    input_matrix = docs_signature_sets  # for simplicity and readability
+
+    num_shingles = input_matrix.shape[0]  # num rows
+    num_docs = input_matrix.shape[1]  # num columns
+    num_permutation = len(hash_fn)
+    min_hash_signatures = np.full((num_permutation, num_docs), np.inf)
+
+    for shingle in range(num_shingles):  # for each shingle, row
+        for doc in range(num_docs):  # for each doc, column
+            if input_matrix[shingle, doc] == 1: # ensures that hash functions are applied only to shingles that actually appear in the document
+                for permutation, (hash_func, params) in enumerate(hash_fn):
+                    shingle_hash = hash_func(shingle, **params)
+                    min_hash_signatures[permutation, doc] = min( #permutation is the row, doc is the column if Sig_M
+                        min_hash_signatures[permutation, doc], shingle_hash)
 
     return min_hash_signatures
 
 
 # METHOD FOR TASK 4
 # Hashes the MinHash Signature Matrix into buckets and find candidate similar documents
-def lsh(m_matrix):
-    candidates = []  # list of candidate sets of documents for checking similarity
+def lsh(min_hash_signatures):
 
-    # implement your code here
+    b = parameters_dictionary['b']
+    num_rows = min_hash_signatures.shape[0] # num permutations
+    num_docs = min_hash_signatures.shape[1] 
+    rows_per_band = num_rows // b # divide the rows of the signature matrix into b bands
+    candidates = set()
+
+    for band in range(b):
+        start_index = band * rows_per_band
+        end_index = start_index + rows_per_band
+        buckets = {}
+
+        for doc in range(num_docs):
+            # extract MinHash values for the current document in the current band
+            band_slice = tuple(min_hash_signatures[start_index:end_index, doc]) 
+
+            band_hash = hash(band_slice) #fixed size integer
+
+            if band_hash not in buckets: # if band_hash is not already a key in buckets
+                buckets[band_hash] = [doc] # initialize a new list with the current doc
+            else: # there are documents with identical hash in this band
+                for candidate_doc in buckets[band_hash]: 
+                    candidates.add((candidate_doc, doc)) # doc becomes candidate with each candidate_doc in the bucket
+                buckets[band_hash].append(doc) # need index for later when calculating similarity
 
     return candidates
 
@@ -139,9 +237,19 @@ def lsh(m_matrix):
 # METHOD FOR TASK 5
 # Calculates the similarities of the candidate documents
 def candidates_similarities(candidate_docs, min_hash_matrix):
-    similarity_dict = []
+    similarity_dict = {}
+    t = parameters_dictionary['t']
 
-    # implement your code here
+    for candidate_pair in candidate_docs:
+
+        doc1, doc2 = list(candidate_pair)
+
+        agreement = np.sum(min_hash_matrix[:, doc1] == min_hash_matrix[:, doc2])
+
+        similarity = agreement / min_hash_matrix.shape[0]
+
+        if similarity > t:
+            similarity_dict[candidate_pair] = similarity
 
     return similarity_dict
 
@@ -154,7 +262,7 @@ if __name__ == '__main__':
     read_parameters()
 
     # Reading the data
-    print("Data reading...")
+    print("\nData reading...")
     data_folder = data_main_directory / parameters_dictionary['data']
     t0 = time.time()
     read_data(data_folder)
@@ -171,6 +279,7 @@ if __name__ == '__main__':
         t3 = time.time()
         print("Calculating the similarities of", len(naive_similarity_matrix),
               "combinations of documents took", t3 - t2, "sec\n")
+    
 
     # k-Shingles
     print("Starting to create all k-shingles of the documents...")
@@ -179,14 +288,14 @@ if __name__ == '__main__':
     t5 = time.time()
     print("Representing documents with k-shingles took", t5 - t4, "sec\n")
 
-    # signatures sets
+    # signatures sets (input matrix)
     print("Starting to create the signatures of the documents...")
     t6 = time.time()
     signature_sets = signature_set(all_docs_k_shingles)
     t7 = time.time()
     print("Signatures representation took", t7 - t6, "sec\n")
 
-    # Permutations
+    # Permutations (real signature matrix)
     print("Starting to simulate the MinHash Signature Matrix...")
     t8 = time.time()
     hash_fn = generate_hash_functions(parameters_dictionary['permutations'], len(signature_sets))
@@ -202,7 +311,7 @@ if __name__ == '__main__':
     print("LSH took", t11 - t10, "sec\n")
 
     # Return the over t similar pairs
-    print("Starting to get the pairs of documents with over ", parameters_dictionary['t'], "% similarity...")
+    print("Starting to get the pairs of documents with over ", parameters_dictionary['t']*100, "% similarity...") # edited to get right percentage
     t14 = time.time()
     true_pairs = candidates_similarities(candidate_docs, min_hash_signatures)
     t15 = time.time()
@@ -213,15 +322,21 @@ if __name__ == '__main__':
     if parameters_dictionary['naive']:
         print("Naive similarity calculation took", t3 - t2, "sec")
 
-    print("LSH process took in total", t14 - t15, "sec")
+    print("LSH process took in total", t15 - t14, "sec") # edited to get right order
 
-    
+    '''
     print("The pairs of documents are:\n")
     for p in true_pairs:
-        print(f"LSH algorith reveals that the BBC article {list(p.keys())[0][0]+1}.txt and {list(p.keys())[0][1]+1}.txt \
+        print(f"LSH algorithm reveals that the BBC article {list(p.keys())[0][0]+1}.txt and {list(p.keys())[0][1]+1}.txt \
               are {round(list(p.values())[0],2)*100}% similar")
-        
-        print("\n")
 
+        print("\n")
+    '''
     
-    
+    # edited this slightly to make it work with our lsh function
+    print("The pairs of documents are:\n")
+    for pair, similarity in true_pairs.items():
+        doc1, doc2 = pair  # Assuming pair is a tuple (doc1, doc2)
+        # multiply by 100 to get percentage
+        print(f"LSH algorithm reveals that the BBC article {doc1+1}.txt and {doc2+1}.txt "
+            f"are {round(similarity*100, 2)}% similar.\n")
